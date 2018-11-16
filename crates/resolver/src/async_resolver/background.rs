@@ -16,6 +16,7 @@ use lookup::{Lookup, LookupEither, LookupFuture};
 use lookup_ip::LookupIpFuture;
 use lookup_state::CachingClient;
 use name_server_pool::{ConnectionHandle, NameServerPool, StandardConnection};
+use proto::op::Query;
 
 use super::Request;
 
@@ -65,7 +66,7 @@ pub(super) fn task(
             config,
             options,
             client_cache: CachingClient::with_cache(lru, either),
-            hosts: hosts,
+            hosts,
             request_rx,
         }
     })
@@ -105,10 +106,9 @@ impl Task {
             if self.options.ndots > 4 {
                 finally_ip_addr = Some(ip_addr);
             } else {
-                return LookupIpFuture::ok(
-                    self.client_cache.clone(),
-                    Lookup::new_with_max_ttl(Arc::new(vec![ip_addr])),
-                );
+                let query = Query::query(maybe_name.unwrap_or_default(), ip_addr.to_record_type());
+                let lookup = Lookup::new_with_max_ttl(query, Arc::new(vec![ip_addr]));
+                return LookupIpFuture::ok(self.client_cache.clone(), lookup);
             }
         }
 
@@ -116,10 +116,9 @@ impl Task {
             (Ok(name), _) => name,
             (Err(_), Some(ip_addr)) => {
                 // it was a valid IP, return that...
-                return LookupIpFuture::ok(
-                    self.client_cache.clone(),
-                    Lookup::new_with_max_ttl(Arc::new(vec![ip_addr.clone()])),
-                );
+                let query = Query::query(Name::default(), ip_addr.to_record_type());
+                let lookup = Lookup::new_with_max_ttl(query, Arc::new(vec![ip_addr.clone()]));
+                return LookupIpFuture::ok(self.client_cache.clone(), lookup);
             }
             (Err(err), None) => {
                 return LookupIpFuture::error(self.client_cache.clone(), err);

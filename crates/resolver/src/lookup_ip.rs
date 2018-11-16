@@ -40,6 +40,11 @@ impl LookupIp {
         LookupIpIter(self.0.iter())
     }
 
+    /// Returns a reference to the Query that was used to produce this result.
+    pub fn query(&self) -> &Query {
+        self.0.query()
+    }
+
     /// Returns the `Instant` at which this lookup is no longer valid.
     pub fn valid_until(&self) -> Instant {
         self.0.valid_until()
@@ -122,9 +127,8 @@ impl<C: DnsHandle + 'static> Future for LookupIpFuture<C> {
                 } else if let Some(ip_addr) = self.finally_ip_addr.take() {
                     // Otherwise, if there's an IP address to fall back to,
                     // we'll return it.
-                    return Ok(Async::Ready(
-                        Lookup::new_with_max_ttl(Arc::new(vec![ip_addr])).into(),
-                    ));
+                    let lookup = Lookup::new_with_max_ttl(Query::new(), Arc::new(vec![ip_addr]));
+                    return Ok(Async::Ready(lookup.into()));
                 }
             };
 
@@ -175,7 +179,7 @@ where
     }
 
     pub(crate) fn error<E: Fail>(client_cache: CachingClient<C>, error: E) -> Self {
-        return LookupIpFuture {
+        LookupIpFuture {
             // errors on names don't need to be cheap... i.e. this clone is unfortunate in this case.
             client_cache,
             names: vec![],
@@ -186,11 +190,11 @@ where
             )),
             hosts: None,
             finally_ip_addr: None,
-        };
+        }
     }
 
     pub(crate) fn ok(client_cache: CachingClient<C>, lp: Lookup) -> Self {
-        return LookupIpFuture {
+        LookupIpFuture {
             client_cache,
             names: vec![],
             strategy: LookupIpStrategy::default(),
@@ -198,7 +202,7 @@ where
             query: Box::new(future::ok(lp)),
             hosts: None,
             finally_ip_addr: None,
-        };
+        }
     }
 }
 /// returns a new future for lookup
@@ -273,12 +277,11 @@ fn ipv4_and_ipv6<C: DnsHandle + 'static>(
             client,
             options,
             hosts,
-        ))
-            .then(|sel_res| {
-                match sel_res {
-                    // Some ips returned, get the other record result, or else just return record
-                    Ok((ips, remaining_query)) => {
-                        Box::new(remaining_query.then(move |query_res| match query_res {
+        )).then(|sel_res| {
+            match sel_res {
+                // Some ips returned, get the other record result, or else just return record
+                Ok((ips, remaining_query)) => {
+                    Box::new(remaining_query.then(move |query_res| match query_res {
                             // join AAAA and A results
                             Ok(rem_ips) => {
                                 // TODO: create a LookupIp enum with the ability to chain these together
@@ -290,12 +293,12 @@ fn ipv4_and_ipv6<C: DnsHandle + 'static>(
                         })) as
                             // This cast is to resolve a comilation error, not sure of it's necessity
                             Box<Future<Item = Lookup, Error = ResolveError> + Send>
-                    }
-
-                    // One failed, just return the other
-                    Err((_, remaining_query)) => Box::new(remaining_query),
                 }
-            }),
+
+                // One failed, just return the other
+                Err((_, remaining_query)) => Box::new(remaining_query),
+            }
+        }),
     )
 }
 
@@ -401,7 +404,7 @@ pub mod tests {
 
         fn send<R: Into<DnsRequest>>(&mut self, _: R) -> Self::Response {
             Box::new(future::result(
-                self.messages.lock().unwrap().pop().unwrap_or(empty()),
+                self.messages.lock().unwrap().pop().unwrap_or_else(empty),
             ))
         }
     }
@@ -451,10 +454,10 @@ pub mod tests {
                 Default::default(),
                 None,
             ).wait()
-                .unwrap()
-                .iter()
-                .map(|r| r.to_ip_addr().unwrap())
-                .collect::<Vec<IpAddr>>(),
+            .unwrap()
+            .iter()
+            .map(|r| r.to_ip_addr().unwrap())
+            .collect::<Vec<IpAddr>>(),
             vec![Ipv4Addr::new(127, 0, 0, 1)]
         );
     }
@@ -468,10 +471,10 @@ pub mod tests {
                 Default::default(),
                 None,
             ).wait()
-                .unwrap()
-                .iter()
-                .map(|r| r.to_ip_addr().unwrap())
-                .collect::<Vec<IpAddr>>(),
+            .unwrap()
+            .iter()
+            .map(|r| r.to_ip_addr().unwrap())
+            .collect::<Vec<IpAddr>>(),
             vec![Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)]
         );
     }
@@ -487,10 +490,10 @@ pub mod tests {
                 Default::default(),
                 None,
             ).wait()
-                .unwrap()
-                .iter()
-                .map(|r| r.to_ip_addr().unwrap())
-                .collect::<Vec<IpAddr>>(),
+            .unwrap()
+            .iter()
+            .map(|r| r.to_ip_addr().unwrap())
+            .collect::<Vec<IpAddr>>(),
             vec![
                 IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
                 IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)),
@@ -505,10 +508,10 @@ pub mod tests {
                 Default::default(),
                 None,
             ).wait()
-                .unwrap()
-                .iter()
-                .map(|r| r.to_ip_addr().unwrap())
-                .collect::<Vec<IpAddr>>(),
+            .unwrap()
+            .iter()
+            .map(|r| r.to_ip_addr().unwrap())
+            .collect::<Vec<IpAddr>>(),
             vec![IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))]
         );
 
@@ -520,10 +523,10 @@ pub mod tests {
                 Default::default(),
                 None,
             ).wait()
-                .unwrap()
-                .iter()
-                .map(|r| r.to_ip_addr().unwrap())
-                .collect::<Vec<IpAddr>>(),
+            .unwrap()
+            .iter()
+            .map(|r| r.to_ip_addr().unwrap())
+            .collect::<Vec<IpAddr>>(),
             vec![IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))]
         );
 
@@ -535,10 +538,10 @@ pub mod tests {
                 Default::default(),
                 None,
             ).wait()
-                .unwrap()
-                .iter()
-                .map(|r| r.to_ip_addr().unwrap())
-                .collect::<Vec<IpAddr>>(),
+            .unwrap()
+            .iter()
+            .map(|r| r.to_ip_addr().unwrap())
+            .collect::<Vec<IpAddr>>(),
             vec![IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1))]
         );
 
@@ -550,10 +553,10 @@ pub mod tests {
                 Default::default(),
                 None,
             ).wait()
-                .unwrap()
-                .iter()
-                .map(|r| r.to_ip_addr().unwrap())
-                .collect::<Vec<IpAddr>>(),
+            .unwrap()
+            .iter()
+            .map(|r| r.to_ip_addr().unwrap())
+            .collect::<Vec<IpAddr>>(),
             vec![IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1))]
         );
     }
@@ -568,10 +571,10 @@ pub mod tests {
                 Default::default(),
                 None,
             ).wait()
-                .unwrap()
-                .iter()
-                .map(|r| r.to_ip_addr().unwrap())
-                .collect::<Vec<IpAddr>>(),
+            .unwrap()
+            .iter()
+            .map(|r| r.to_ip_addr().unwrap())
+            .collect::<Vec<IpAddr>>(),
             vec![Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)]
         );
 
@@ -583,10 +586,10 @@ pub mod tests {
                 Default::default(),
                 None,
             ).wait()
-                .unwrap()
-                .iter()
-                .map(|r| r.to_ip_addr().unwrap())
-                .collect::<Vec<IpAddr>>(),
+            .unwrap()
+            .iter()
+            .map(|r| r.to_ip_addr().unwrap())
+            .collect::<Vec<IpAddr>>(),
             vec![Ipv4Addr::new(127, 0, 0, 1)]
         );
 
@@ -598,10 +601,10 @@ pub mod tests {
                 Default::default(),
                 None,
             ).wait()
-                .unwrap()
-                .iter()
-                .map(|r| r.to_ip_addr().unwrap())
-                .collect::<Vec<IpAddr>>(),
+            .unwrap()
+            .iter()
+            .map(|r| r.to_ip_addr().unwrap())
+            .collect::<Vec<IpAddr>>(),
             vec![Ipv4Addr::new(127, 0, 0, 1)]
         );
     }
@@ -616,10 +619,10 @@ pub mod tests {
                 Default::default(),
                 None,
             ).wait()
-                .unwrap()
-                .iter()
-                .map(|r| r.to_ip_addr().unwrap())
-                .collect::<Vec<IpAddr>>(),
+            .unwrap()
+            .iter()
+            .map(|r| r.to_ip_addr().unwrap())
+            .collect::<Vec<IpAddr>>(),
             vec![Ipv4Addr::new(127, 0, 0, 1)]
         );
 
@@ -631,10 +634,10 @@ pub mod tests {
                 Default::default(),
                 None,
             ).wait()
-                .unwrap()
-                .iter()
-                .map(|r| r.to_ip_addr().unwrap())
-                .collect::<Vec<IpAddr>>(),
+            .unwrap()
+            .iter()
+            .map(|r| r.to_ip_addr().unwrap())
+            .collect::<Vec<IpAddr>>(),
             vec![Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)]
         );
 
@@ -646,10 +649,10 @@ pub mod tests {
                 Default::default(),
                 None,
             ).wait()
-                .unwrap()
-                .iter()
-                .map(|r| r.to_ip_addr().unwrap())
-                .collect::<Vec<IpAddr>>(),
+            .unwrap()
+            .iter()
+            .map(|r| r.to_ip_addr().unwrap())
+            .collect::<Vec<IpAddr>>(),
             vec![Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1)]
         );
     }

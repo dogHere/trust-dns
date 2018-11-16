@@ -30,7 +30,7 @@ use trust_dns_integration::TestClientStream;
 fn test_lookup() {
     let authority = create_example();
     let mut catalog = Catalog::new();
-    catalog.upsert(authority.origin().clone().into(), authority);
+    catalog.upsert(authority.origin().clone(), authority);
 
     let mut io_loop = Runtime::new().unwrap();
     let (stream, sender) = TestClientStream::new(Arc::new(Mutex::new(catalog)));
@@ -61,7 +61,7 @@ fn test_lookup() {
 fn test_lookup_hosts() {
     let authority = create_example();
     let mut catalog = Catalog::new();
-    catalog.upsert(authority.origin().clone().into(), authority);
+    catalog.upsert(authority.origin().clone(), authority);
 
     let mut io_loop = Runtime::new().unwrap();
     let (stream, sender) = TestClientStream::new(Arc::new(Mutex::new(catalog)));
@@ -79,7 +79,10 @@ fn test_lookup_hosts() {
     hosts.insert(
         Name::from_str("www.example.com.").unwrap(),
         RecordType::A,
-        Lookup::new_with_max_ttl(Arc::new(vec![RData::A(Ipv4Addr::new(10, 0, 1, 104))])),
+        Lookup::new_with_max_ttl(
+            Query::query(Name::from_str("www.example.com.").unwrap(), RecordType::A),
+            Arc::new(vec![RData::A(Ipv4Addr::new(10, 0, 1, 104))])
+        ),
     );
 
     let lookup = LookupIpFuture::lookup(
@@ -115,7 +118,7 @@ fn create_ip_like_example() -> Authority {
 fn test_lookup_ipv4_like() {
     let authority = create_ip_like_example();
     let mut catalog = Catalog::new();
-    catalog.upsert(authority.origin().clone().into(), authority);
+    catalog.upsert(authority.origin().clone(), authority);
 
     let mut io_loop = Runtime::new().unwrap();
     let (stream, sender) = TestClientStream::new(Arc::new(Mutex::new(catalog)));
@@ -148,7 +151,7 @@ fn test_lookup_ipv4_like() {
 fn test_lookup_ipv4_like_fall_through() {
     let authority = create_ip_like_example();
     let mut catalog = Catalog::new();
-    catalog.upsert(authority.origin().clone().into(), authority);
+    catalog.upsert(authority.origin().clone(), authority);
 
     let mut io_loop = Runtime::new().unwrap();
     let (stream, sender) = TestClientStream::new(Arc::new(Mutex::new(catalog)));

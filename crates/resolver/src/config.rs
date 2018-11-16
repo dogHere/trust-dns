@@ -208,8 +208,8 @@ pub enum Protocol {
 
 impl Protocol {
     /// Returns true if this is a datagram oriented protocol, e.g. UDP
-    pub fn is_datagram(&self) -> bool {
-        match *self {
+    pub fn is_datagram(self) -> bool {
+        match self {
             Protocol::Udp => true,
             Protocol::Tcp => false,
             #[cfg(feature = "dns-over-tls")]
@@ -222,13 +222,13 @@ impl Protocol {
     }
 
     /// Returns true if this is a stream oriented protocol, e.g. TCP
-    pub fn is_stream(&self) -> bool {
+    pub fn is_stream(self) -> bool {
         !self.is_datagram()
     }
 
     /// Is this an encrypted protocol, i.e. TLS or HTTPS
-    pub fn is_encrypted(&self) -> bool {
-        match *self {
+    pub fn is_encrypted(self) -> bool {
+        match self {
             Protocol::Udp => false,
             Protocol::Tcp => false,
             #[cfg(feature = "dns-over-tls")]
@@ -279,12 +279,12 @@ impl NameServerConfigGroup {
 
         for ip in ips {
             let udp = NameServerConfig {
-                socket_addr: SocketAddr::new(ip.clone(), port),
+                socket_addr: SocketAddr::new(*ip, port),
                 protocol: Protocol::Udp,
                 tls_dns_name: None,
             };
             let tcp = NameServerConfig {
-                socket_addr: SocketAddr::new(ip.clone(), port),
+                socket_addr: SocketAddr::new(*ip, port),
                 protocol: Protocol::Tcp,
                 tls_dns_name: None,
             };
@@ -309,7 +309,7 @@ impl NameServerConfigGroup {
 
         for ip in ips {
             let config = NameServerConfig {
-                socket_addr: SocketAddr::new(ip.clone(), port),
+                socket_addr: SocketAddr::new(*ip, port),
                 protocol,
                 tls_dns_name: Some(tls_dns_name.clone()),
             };
@@ -447,6 +447,12 @@ impl NameServerConfigGroup {
     }
 }
 
+impl Default for NameServerConfigGroup {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Deref for NameServerConfigGroup {
     type Target = Vec<NameServerConfig>;
     fn deref(&self) -> &Self::Target {
@@ -542,6 +548,14 @@ pub struct ResolverOpts {
     ///
     /// [`MAX_TTL`]: ../dns_lru/const.MAX_TTL.html
     pub negative_max_ttl: Option<Duration>,
+    /// Default is to distrust negative responses from upstream nameservers
+    ///
+    /// Currently only SERVFAIL responses are continued on, this may be expanded to include NXDOMAIN or NoError/Empty responses
+    pub distrust_nx_responses: bool,
+    /// Concurrent requests where more than one Nameserver is registered, the default is 2
+    ///
+    /// 0 or 1 will configure this to execute all requests serially
+    pub num_concurrent_reqs: usize,
 }
 
 impl Default for ResolverOpts {
@@ -564,6 +578,8 @@ impl Default for ResolverOpts {
             negative_min_ttl: None,
             positive_max_ttl: None,
             negative_max_ttl: None,
+            distrust_nx_responses: true,
+            num_concurrent_reqs: 2,
         }
     }
 }
