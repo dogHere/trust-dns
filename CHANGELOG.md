@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file.
 This project adheres to [Semantic Versioning](http://semver.org/).
 
+## 0.16.0
+
+### Changed
+
+- *breaking* configuration for sqlite dynamic update different, see dnssec_with_update.toml for example
+
 ## 0.15.0
 
 ### Fixed
